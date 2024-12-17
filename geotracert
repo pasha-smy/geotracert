@@ -1,0 +1,48 @@
+#!/bin/bash
+
+# Function to check if a command exists
+check_command() {
+    command -v "$1" &>/dev/null
+}
+
+# Function to install missing packages
+install_packages() {
+    echo "Attempting to install $1..."
+    if command -v apt &>/dev/null; then
+        sudo apt update && sudo apt install -y "$1"
+    elif command -v yum &>/dev/null; then
+        sudo yum install -y "$1"
+    else
+        echo "Package manager not supported. Please install $1 manually."
+        exit 1
+    fi
+}
+
+# Check for traceroute
+if ! check_command traceroute || ! check_command geoiplookup; then
+    echo "Required tools 'traceroute' and 'geoiplookup' are missing."
+    read -p "Would you like to install them? (Y/n): " response
+    response=${response,,} # Convert to lowercase
+    if [[ "$response" == "y" || "$response" == "" ]]; then
+        install_packages traceroute
+        install_packages geoip-bin
+    else
+        echo "Cannot proceed without the required tools. Exiting."
+        exit 1
+    fi
+fi
+
+# Prompt the user for the target address
+read -p "Enter the address or IP to trace: " target
+
+# Perform the traceroute
+echo "Tracing route to $target..."
+traceroute_output=$(traceroute -n "$target")
+
+# Process the traceroute results
+echo -e "\nTrace results with geolocation:"
+echo "$traceroute_output" | awk '{print $2}' | grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}' | while read -r ip; do
+    location=$(geoiplookup "$ip" | awk -F ': ' '{print $2}')
+    echo "IP: $ip | Location: $location"
+done
+
